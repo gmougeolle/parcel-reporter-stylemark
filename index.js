@@ -1,41 +1,45 @@
 const { Reporter } = require("@parcel/plugin");
 const fs = require("fs");
 const path = require("path");
-const copy = require("copy-newer");
+const stylemark = require("stylemark");
+const { performance } = require("perf_hooks");
 
 const PACKAGE_JSON_SECTION = "staticFiles";
 
-const copier = new Reporter({
-  async report({ event, options }) {
+const stylemarker = new Reporter({
+  async report({ event, options, logger }) {
     if (event.type !== "buildSuccess") {
       return;
     }
 
-    const config = loadConfig(options.projectRoot);
+    const compilableTypes = ["css", "js"];
+    let shouldRun = true;
 
-    if (!config) throw new Error(`no valid config section in package.json.`);
+    event.bundleGraph.getBundles().forEach(bundle => {
+      if (!compilableTypes.includes(bundle.type)) return;
 
-    const src = options.projectRoot + "/" + config.staticPath[0].staticPath;
-    const dest = options.projectRoot + "/" + config.staticPath[0].staticOutDir;
+      if (bundle.env.minify) shouldRun = false;
+    });
 
-    const result = await copy("**", dest, { cwd: src });
+    if (!shouldRun)
+      return logger.info({
+        message: `Minified assets cannot be used to build Stylemark because comments will be stripped out`
+      });
 
-    if(result.some(val => (val !== false && val !== "dir")))
-      console.log(`📄 Wrote static files from : ${src} to: ${dest}`);
-  },
+    const buildStartedAt = performance.now();
+
+    const result = stylemark({
+      input: "udata_gouvfr/theme/static/",
+      output: "udata_gouvfr/theme/static/stylemark/",
+      configPath: options.projectRoot + "/.stylemark.yml"
+    });
+
+    const buildEndedAt = performance.now();
+
+    logger.info({
+      message: `📄 Stylemark built in ${buildEndedAt - buildStartedAt} ms`
+    });
+  }
 });
 
-const loadConfig = (rootFolder) => {
-  const packageJson = fs
-    .readFileSync(path.join(rootFolder, "package.json"))
-    .toString();
-  const packageInfo = JSON.parse(packageJson);
-  const packageSection = packageInfo[PACKAGE_JSON_SECTION];
-  if (!packageSection) {
-    throw new Error(`no "${PACKAGE_JSON_SECTION}" section in package.json.`);
-  }
-
-  return packageSection;
-};
-
-exports.default = copier;
+exports.default = stylemarker;
