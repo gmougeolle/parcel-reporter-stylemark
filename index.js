@@ -4,13 +4,20 @@ const path = require("path");
 const stylemark = require("stylemark");
 const { performance } = require("perf_hooks");
 
-const PACKAGE_JSON_SECTION = "staticFiles";
+const PACKAGE_JSON_SECTION = "stylemarkPath";
 
 const stylemarker = new Reporter({
   async report({ event, options, logger }) {
     if (event.type !== "buildSuccess") {
       return;
     }
+
+    const config = loadConfig(options.projectRoot);
+
+    if (!config) throw new Error(`no valid config section in package.json.`);
+
+    const input = config.input;
+    const output = config.output;
 
     const compilableTypes = ["css", "js"];
     let shouldRun = true;
@@ -29,8 +36,8 @@ const stylemarker = new Reporter({
     const buildStartedAt = performance.now();
 
     const result = stylemark({
-      input: "udata_gouvfr/theme/static/",
-      output: "udata_gouvfr/theme/static/stylemark/",
+      input,
+      output,
       configPath: options.projectRoot + "/.stylemark.yml"
     });
 
@@ -41,5 +48,18 @@ const stylemarker = new Reporter({
     });
   }
 });
+
+const loadConfig = rootFolder => {
+  const packageJson = fs
+    .readFileSync(path.join(rootFolder, "package.json"))
+    .toString();
+  const packageInfo = JSON.parse(packageJson);
+  const packageSection = packageInfo[PACKAGE_JSON_SECTION];
+  if (!packageSection) {
+    throw new Error(`no "${PACKAGE_JSON_SECTION}" section in package.json.`);
+  }
+
+  return packageSection;
+};
 
 exports.default = stylemarker;
